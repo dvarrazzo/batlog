@@ -1,0 +1,185 @@
+#!/usr/bin/env python
+"""
+Lifetime battery charge and capacity logger
+"""
+
+# Copyright (C) 2013 Daniele Varrazzo <daniele.varrazzo@gmail.com>
+
+
+import os
+import sys
+import time
+import signal
+import datetime
+
+ACPIDIR = '/proc/acpi/battery/'
+DATEFMT = "%Y-%m-%d %H:%M:%S"
+
+
+import logging
+logger = logging.getLogger()
+logging.basicConfig(
+    stream=sys.stderr,
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s',
+    datefmt=DATEFMT)
+
+
+def create_batteries(opt):
+    names = os.listdir(ACPIDIR)
+    bats = []
+    for name in names:
+        logger.info("found battery %s", name)
+        bat = Battery(name, logdir=opt.logdir)
+        bats.append(bat)
+
+    return bats
+
+
+class Battery(object):
+    def __init__(self, name, logdir):
+        self.name = name
+
+        self.finfo = LogFile(
+            infile = os.path.join(ACPIDIR, name, 'info'),
+            outfile = os.path.join(logdir, "%s.info.log" % name))
+        self.fstate = LogFile(
+            infile = os.path.join(ACPIDIR, name, 'state'),
+            outfile = os.path.join(logdir, "%s.state.log" % name))
+
+    def print_titles(self):
+        self.finfo.print_titles()
+        self.fstate.print_titles()
+
+    def print_log(self):
+        self.finfo.print_log()
+        self.fstate.print_log()
+
+
+class LogFile(object):
+    def __init__(self, infile, outfile):
+        self.infn = infile
+        self.outfn = outfile
+
+    def print_titles(self):
+        data = '\t'.join(k for k, v in self.get_data())
+
+        outfile = self.get_outfile()
+        outfile.write(':timestamp\t')
+        outfile.write(data)
+        outfile.write('\n')
+        outfile.flush()
+
+    _oldlog = None
+
+    def print_log(self):
+        data = '\t'.join(v for k, v in self.get_data())
+        if data == self._oldlog:
+            return
+
+        outfile = self.get_outfile()
+        outfile.write(datetime.datetime.now().strftime(DATEFMT))
+        outfile.write('\t')
+        outfile.write(data)
+        outfile.write('\n')
+        outfile.flush()
+        self._oldlog = data
+
+    def get_data(self):
+        logger.debug("reading file %s", self.infn)
+        with open(self.infn, 'r') as f:
+            for line in f:
+                if ':' not in line: continue
+                k, v = line.split(':', 1)
+                yield k.strip(), v.strip()
+
+    _outfile = None
+
+    def get_outfile(self):
+        if self._outfile is None:
+            logger.debug("opening output file %s", self.outfn)
+            if not os.path.exists(os.path.dirname(self.outfn)):
+                os.makedirs(os.path.dirname(self.outfn))
+
+            self._outfile = open(self.outfn, 'a')
+
+        return self._outfile
+
+
+def handler(signum, frame):
+    logger.info("got signal %s", signum)
+    sys.exit(128 + signum)
+
+signal.signal(signal.SIGTERM, handler)  # to catch upstart exit
+
+
+class ScriptError(Exception):
+    """Controlled exception raised by the script."""
+
+started = False
+
+def main():
+    global started
+
+    opt = parse_cmdline()
+    if opt.verbose:
+        logger.setLevel(logging.DEBUG)
+
+    logger.info("batlog started")
+    started = True
+
+    bats = create_batteries(opt)
+    if not bats:
+        raise ScriptError("no battery found")
+
+    for bat in bats:
+        bat.print_titles()
+
+    while 1:
+        for bat in bats:
+            bat.print_log()
+
+        time.sleep(opt.interval)
+
+def parse_cmdline():
+    from optparse import OptionParser
+
+    parser = OptionParser(usage="%prog [options]",
+        description=__doc__)
+    parser.add_option('--logdir', metavar="DIR", default='.',
+        help="where to create log files [default: %default]")
+    parser.add_option('--interval', metavar="SEC", default=60, type=int,
+        help="how often to sample the battery level [default: %default sec]")
+    parser.add_option('--verbose', action="store_true",
+        help="print more details on stderr")
+
+    opt, args = parser.parse_args()
+    if args:
+        parser.error("no arg expected")
+
+    return opt
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+
+    except ScriptError, e:
+        logger.error("%s", e)
+        sys.exit(1)
+
+    except Exception:
+        logger.exception("unexpected error")
+        sys.exit(1)
+
+    except KeyboardInterrupt:
+        logger.info("user interrupt")
+        sys.exit(0)
+
+    except SystemExit, e:
+        if started:
+            logger.info("system exit")
+
+        # else, exit silently (e.g. because of 'batlog --help')
+        sys.stderr.flush()
+        sys.exit(e.code)
