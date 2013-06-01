@@ -56,3 +56,44 @@ into ``/usr/local/bin/`` and ``batlog.conf`` into ``/etc/init/``: the logger
 will start automatically when the system starts and log battery info into
 ``/var/log/batlog/``.  Use ``sudo service batlog start/stop`` to control the
 program.
+
+
+Simple plot example
+-------------------
+
+You can create a basic plot of the gathered data using matplotlib_::
+
+    $ ipython --pylab
+
+    In [1]: import matplotlib.pyplot as plt
+
+    In [2]: list(enumerate(open('BAT0.uevent.log').readline().split('\t')))
+    Out[2]:
+    [(0, ':timestamp'),
+     (1, 'NAME'),
+     (2, 'STATUS'),
+     (3, 'PRESENT'),
+     (4, 'TECHNOLOGY'),
+     (5, 'CYCLE_COUNT'),
+     (6, 'VOLTAGE_MIN_DESIGN'),
+     (7, 'VOLTAGE_NOW'),
+     (8, 'CURRENT_NOW'),
+     (9, 'CHARGE_FULL_DESIGN'),
+     (10, 'CHARGE_FULL'),
+     (11, 'CHARGE_NOW'),
+     (12, 'MODEL_NAME'),
+     (13, 'MANUFACTURER'),
+     (14, 'SERIAL_NUMBER\n')]
+
+    In [3]: data = [ l.split('\t') for l in open('BAT0.uevent.log')
+        if not l.startswith(':') ]
+
+    In [4]: plt.plot(
+        [datetime.datetime.strptime(r[0], '%Y-%m-%d %H:%M:%S') for r in data],
+        [float(r[11]) / 1000 for r in data], '.')
+
+    In [5]: plt.title("%s %s battery profile" % (data[0][13], data[0][12]))
+
+    In [6]: plt.ylabel('Capacity (mAh)')
+
+.. _matplotlib: http://matplotlib.org/
