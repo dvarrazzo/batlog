@@ -20,13 +20,28 @@ Options:
   --interval=SEC  how often to sample the battery level [default: 60 sec]
   --verbose       print more details on stderr
 
-The script samples batteries ACPI info from ``/proc/acpi/battery/`` and saves
-information into ``BAT?.info.log`` and ``BAT?.state.log`` file.  A new line
-is saved only if different from the previous one.  Program start/stop info are
-printed on stderr.
+The script can use batteries information from a few sources. In order of
+preference:
 
-Each log file has a titles line  prefixed by ``:`` (printed when the program
-starts) and a line for each sample.  Fields are separated by tab.
+1. ``/sys/class/power_supply/`` contains directories such as ``BAT0`` and
+   ``AC``.  The ``uevent`` file contains all the details. Values seem usually
+   expressed in micro-units but I'm not sure.
+
+2. ``/proc/acpi/battery/`` seems `to be phased out`__.  Each directory contains
+   an ``info`` file with static information (maker, design capacity...) and
+   a ``state`` file with the current charge and discharging rate level.  The
+   unit is expressed near each value.
+
+.. __: http://askubuntu.com/questions/214379/where-did-proc-acpi-battery-bat0-xxx-go-in-12-10
+
+The script samples data from the first source found and saves a log file after
+each power supply available.  A new line is saved only if different from the
+previous one.  Program start/stop info are printed on stderr.
+
+Each log file has a titles line prefixed by ``:`` (printed when the program
+starts) and a line for each sample.  Fields are separated by tab.  No unit
+conversion is performed: data is just read from the source and dumped in
+tabular form.
 
 
 Installation

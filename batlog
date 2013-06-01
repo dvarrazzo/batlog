@@ -11,8 +11,10 @@ import sys
 import time
 import signal
 import datetime
+from itertools import takewhile
 
-ACPIDIR = '/proc/acpi/battery/'
+SYSDIR = '/sys/class/power_supply/'
+ACPIDIR = '/proc/acpi/battery/'         # not available after Ubuntu 12.10
 DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 
@@ -26,9 +28,32 @@ logging.basicConfig(
 
 
 def create_batteries(opt):
-    return create_batteries_acpi(opt)
+    bats = create_batteries_sys(opt)
+    if bats:
+        return bats
+    else:
+        return create_batteries_acpi(opt)
+
+def create_batteries_sys(opt):
+    logger.debug("looking for batteres in '%s'", SYSDIR)
+    if not os.path.isdir(SYSDIR):
+        return []
+
+    names = os.listdir(SYSDIR)
+    bats = []
+    for name in names:
+        if os.path.exists(os.path.join(SYSDIR, name, 'uevent')):
+            logger.info("found battery %s", name)
+            bat = SysBattery(name, logdir=opt.logdir)
+            bats.append(bat)
+
+    return bats
 
 def create_batteries_acpi(opt):
+    logger.debug("looking for batteres in '%s'", ACPIDIR)
+    if not os.path.isdir(ACPIDIR):
+        return []
+
     names = os.listdir(ACPIDIR)
     bats = []
     for name in names:
@@ -51,6 +76,21 @@ class Battery(object):
 
     def print_log(self):
         raise NotImplementedError
+
+
+class SysBattery(Battery):
+    def __init__(self, name, logdir):
+        super(SysBattery, self).__init__(name, logdir)
+
+        self.outfile = LogFile(separator='=',
+            infile = os.path.join(SYSDIR, name, 'uevent'),
+            outfile = os.path.join(logdir, "%s.uevent.log" % name))
+
+    def print_titles(self):
+        self.outfile.print_titles()
+
+    def print_log(self):
+        self.outfile.print_log()
 
 
 class AcpiBattery(Battery):
@@ -80,11 +120,12 @@ class LogFile(object):
         self.separator = separator
 
     def print_titles(self):
-        data = '\t'.join(k for k, v in self.get_data())
+        data = [k for k, v in self.get_data()]
+        prefix = self.find_common_prefix(data)
 
         outfile = self.get_outfile()
         outfile.write(':timestamp\t')
-        outfile.write(data)
+        outfile.write('\t'.join(label[len(prefix):] for label in data))
         outfile.write('\n')
         outfile.flush()
 
@@ -122,6 +163,18 @@ class LogFile(object):
             self._outfile = open(self.outfn, 'a')
 
         return self._outfile
+
+    def find_common_prefix(self, strings):
+        prefix = None
+        for s in strings:
+            if prefix is None:
+                prefix = s
+            else:
+                prefix = ''.join(p[0] for p in takewhile(
+                    lambda p: p[0] == p[1],
+                    zip(prefix, s)))
+
+        return prefix
 
 
 def handler(signum, frame):
