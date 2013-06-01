@@ -26,12 +26,17 @@ logging.basicConfig(
 
 
 def create_batteries(opt):
+    return create_batteries_acpi(opt)
+
+def create_batteries_acpi(opt):
     names = os.listdir(ACPIDIR)
     bats = []
     for name in names:
-        logger.info("found battery %s", name)
-        bat = Battery(name, logdir=opt.logdir)
-        bats.append(bat)
+        if os.path.exists(os.path.join(ACPIDIR, name, 'info')) \
+        and os.path.exists(os.path.join(ACPIDIR, name, 'state')):
+            logger.info("found battery %s", name)
+            bat = AcpiBattery(name, logdir=opt.logdir)
+            bats.append(bat)
 
     return bats
 
@@ -39,11 +44,23 @@ def create_batteries(opt):
 class Battery(object):
     def __init__(self, name, logdir):
         self.name = name
+        self.logdir = logdir
 
-        self.finfo = LogFile(
+    def print_titles(self):
+        raise NotImplementedError
+
+    def print_log(self):
+        raise NotImplementedError
+
+
+class AcpiBattery(Battery):
+    def __init__(self, name, logdir):
+        super(AcpiBattery, self).__init__(name, logdir)
+
+        self.finfo = LogFile(separator=':',
             infile = os.path.join(ACPIDIR, name, 'info'),
             outfile = os.path.join(logdir, "%s.info.log" % name))
-        self.fstate = LogFile(
+        self.fstate = LogFile(separator=':',
             infile = os.path.join(ACPIDIR, name, 'state'),
             outfile = os.path.join(logdir, "%s.state.log" % name))
 
@@ -57,9 +74,10 @@ class Battery(object):
 
 
 class LogFile(object):
-    def __init__(self, infile, outfile):
+    def __init__(self, infile, outfile, separator):
         self.infn = infile
         self.outfn = outfile
+        self.separator = separator
 
     def print_titles(self):
         data = '\t'.join(k for k, v in self.get_data())
@@ -89,8 +107,8 @@ class LogFile(object):
         logger.debug("reading file %s", self.infn)
         with open(self.infn, 'r') as f:
             for line in f:
-                if ':' not in line: continue
-                k, v = line.split(':', 1)
+                if self.separator not in line: continue
+                k, v = line.split(self.separator, 1)
                 yield k.strip(), v.strip()
 
     _outfile = None
