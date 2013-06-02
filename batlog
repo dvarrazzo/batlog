@@ -43,9 +43,21 @@ def create_batteries_sys(opt):
     bats = []
     for name in names:
         if os.path.exists(os.path.join(SYSDIR, name, 'uevent')):
-            logger.info("found battery %s", name)
-            bat = SysBattery(name, logdir=opt.logdir)
-            bats.append(bat)
+            logger.debug("found power source %s", name)
+            bat = Battery(name)
+
+            logfile = LogFile(separator='=',
+                infile = os.path.join(SYSDIR, name, 'uevent'),
+                outfile = os.path.join(opt.logdir, "%s.uevent.log" % name))
+            if not opt.fields or logfile.has_fields(opt.fields):
+                logfile.fields = opt.fields
+                bat.files.append(logfile)
+
+            if bat.files:
+                logger.info("logging power source %s", name)
+                bats.append(bat)
+            else:
+                logger.debug("uevent file for %s has no requested field", name)
 
     return bats
 
@@ -59,58 +71,39 @@ def create_batteries_acpi(opt):
     for name in names:
         if os.path.exists(os.path.join(ACPIDIR, name, 'info')) \
         and os.path.exists(os.path.join(ACPIDIR, name, 'state')):
-            logger.info("found battery %s", name)
-            bat = AcpiBattery(name, logdir=opt.logdir)
-            bats.append(bat)
+            logger.debug("found power source %s", name)
+            bat = Battery(name)
+            for fn in ('info', 'state'):
+                logfile = LogFile(separator=':',
+                    infile = os.path.join(ACPIDIR, name, fn),
+                    outfile = os.path.join(
+                        opt.logdir, "%s.%s.log" % (name, fn)))
+                if not opt.fields or logfile.has_fields(opt.fields):
+                    logfile.fields = opt.fields
+                    bat.files.append(logfile)
+
+            if bat.files:
+                logger.info("logging power source %s", name)
+                bats.append(bat)
+            else:
+                logger.debug("%s file for %s has no requested field",
+                             fn, name)
 
     return bats
 
 
 class Battery(object):
-    def __init__(self, name, logdir):
+    def __init__(self, name):
         self.name = name
-        self.logdir = logdir
+        self.files = []
 
     def print_titles(self):
-        raise NotImplementedError
+        for f in self.files:
+            f.print_titles()
 
     def print_log(self):
-        raise NotImplementedError
-
-
-class SysBattery(Battery):
-    def __init__(self, name, logdir):
-        super(SysBattery, self).__init__(name, logdir)
-
-        self.outfile = LogFile(separator='=',
-            infile = os.path.join(SYSDIR, name, 'uevent'),
-            outfile = os.path.join(logdir, "%s.uevent.log" % name))
-
-    def print_titles(self):
-        self.outfile.print_titles()
-
-    def print_log(self):
-        self.outfile.print_log()
-
-
-class AcpiBattery(Battery):
-    def __init__(self, name, logdir):
-        super(AcpiBattery, self).__init__(name, logdir)
-
-        self.finfo = LogFile(separator=':',
-            infile = os.path.join(ACPIDIR, name, 'info'),
-            outfile = os.path.join(logdir, "%s.info.log" % name))
-        self.fstate = LogFile(separator=':',
-            infile = os.path.join(ACPIDIR, name, 'state'),
-            outfile = os.path.join(logdir, "%s.state.log" % name))
-
-    def print_titles(self):
-        self.finfo.print_titles()
-        self.fstate.print_titles()
-
-    def print_log(self):
-        self.finfo.print_log()
-        self.fstate.print_log()
+        for f in self.files:
+            f.print_log()
 
 
 class LogFile(object):
@@ -118,14 +111,18 @@ class LogFile(object):
         self.infn = infile
         self.outfn = outfile
         self.separator = separator
+        self.fields = None
+
+    def has_fields(self, fields):
+        return bool(set(self.get_titles()) & set(fields))
+
+    def get_titles(self):
+        return [k for k, v in self.get_data()]
 
     def print_titles(self):
-        data = [k for k, v in self.get_data()]
-        prefix = self.find_common_prefix(data)
-
         outfile = self.get_outfile()
         outfile.write(':timestamp\t')
-        outfile.write('\t'.join(label[len(prefix):] for label in data))
+        outfile.write('\t'.join(self.get_titles()))
         outfile.write('\n')
         outfile.flush()
 
@@ -144,13 +141,28 @@ class LogFile(object):
         outfile.flush()
         self._oldlog = data
 
+    _common_prefix = None
+
     def get_data(self):
+        if self._common_prefix is None:
+            self._common_prefix = ''
+            titles = self.get_titles()
+            self._common_prefix = self.find_common_prefix(titles)
+            assert self._common_prefix is not None
+
         logger.debug("reading file %s", self.infn)
+        data = []
         with open(self.infn, 'r') as f:
             for line in f:
                 if self.separator not in line: continue
                 k, v = line.split(self.separator, 1)
-                yield k.strip(), v.strip()
+                data.append((k[len(self._common_prefix):].strip(), v.strip()))
+
+        if self.fields:
+            data = dict(data)
+            data = [ (k, data[k]) for k in self.fields if k in data ]
+
+        return data
 
     _outfile = None
 
@@ -219,6 +231,9 @@ def parse_cmdline():
         description=__doc__)
     parser.add_option('--logdir', metavar="DIR", default='.',
         help="where to create log files [default: %default]")
+    parser.add_option('--fields', metavar="F1,F2...",
+        help="fields to include; the file is not created if no field is"
+             " selected [default: all]")
     parser.add_option('--interval', metavar="SEC", default=60, type=int,
         help="how often to sample the battery level [default: %default sec]")
     parser.add_option('--verbose', action="store_true",
@@ -227,6 +242,9 @@ def parse_cmdline():
     opt, args = parser.parse_args()
     if args:
         parser.error("no arg expected")
+
+    if opt.fields:
+        opt.fields = opt.fields.split(',')
 
     return opt
 

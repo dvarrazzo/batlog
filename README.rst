@@ -15,10 +15,12 @@ Usage
 Usage: ``batlog`` [*options*]
 
 Options:
-  -h, --help      show this help message and exit
-  --logdir=DIR    where to create log files [default: .]
-  --interval=SEC  how often to sample the battery level [default: 60 sec]
-  --verbose       print more details on stderr
+  -h, --help         show this help message and exit
+  --logdir=DIR       where to create log files [default: .]
+  --fields=F1,F2...  fields to include; the file is not created if no field is
+                     selected [default: all]
+  --interval=SEC     how often to sample the battery level [default: 60 sec]
+  --verbose          print more details on stderr
 
 The script can use batteries information from a few sources. In order of
 preference:
@@ -35,13 +37,17 @@ preference:
 .. __: http://askubuntu.com/questions/214379/where-did-proc-acpi-battery-bat0-xxx-go-in-12-10
 
 The script samples data from the first source found and saves a log file after
-each power supply available.  A new line is saved only if different from the
-previous one.  Program start/stop info are printed on stderr.
+each power supply available.  Program start/stop info are printed on stderr.
 
 Each log file has a titles line prefixed by ``:`` (printed when the program
 starts) and a line for each sample.  Fields are separated by tab.  No unit
 conversion is performed: data is just read from the source and dumped in
 tabular form.
+
+A new line is saved only if different from the previous one. Note that some
+fields may be volatile and not really relevant to battery profiling (e.g. the
+``VOLTAGE_NOW``): you may want to exclude these fields from the output (using
+``--fields``) to minimize the lines saved.
 
 
 Installation
