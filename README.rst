@@ -17,8 +17,8 @@ Usage: ``batlog`` [*options*]
 Options:
   -h, --help         show this help message and exit
   --logdir=DIR       where to create log files [default: .]
-  --fields=F1,F2...  fields to include; the file is not created if no field is
-                     selected [default: all]
+  --fields=FIELDS    fields to include; the file is not created if no field is
+                     selected; comma-separated list [default: all]
   --interval=SEC     how often to sample the battery level [default: 60 sec]
   --verbose          print more details on stderr
 
