@@ -27,7 +27,7 @@ preference:
 
 1. ``/sys/class/power_supply/`` contains directories such as ``BAT0`` and
    ``AC``.  The ``uevent`` file contains all the details. Values seem usually
-   expressed in micro-units but I'm not sure.
+   expressed in micro-units, see table below.
 
 2. ``/proc/acpi/battery/`` seems `to be phased out`__.  Each directory contains
    an ``info`` file with static information (maker, design capacity...) and
@@ -62,6 +62,41 @@ into ``/usr/local/bin/`` and ``batlog.conf`` into ``/etc/init/``: the logger
 will start automatically when the system starts and log battery info into
 ``/var/log/batlog/``.  Use ``sudo service batlog start/stop`` to control the
 program.
+
+
+Fields available
+----------------
+
+On Ubuntu 12.04 with kernel 3.2.0-44, this is the relation between the fields
+in the ``/sys/class/power_supply/NAME/uevent`` and the ones in
+``/proc/acpi/battery/NAME/state`` and ``info``. All the fields in ``uevent``
+have a ``POWER_SUPPLY_`` prefix. The fields refer to batteries only, not other
+types of power supplies (e.g. A.C.).
+
+================== =========== ================== =========== ======================= =============
+``uevent``         sample      ``state``          sample      ``info``                sample
+================== =========== ================== =========== ======================= =============
+NAME               BAT0
+STATUS             Discharging charging state     discharging
+PRESENT            1           present            yes         present                 yes
+TECHNOLOGY         Li-ion                                     battery type            LION
+CYCLE_COUNT        0                                          cycle count             0
+VOLTAGE_MIN_DESIGN 11100000                                   design voltage          11100 mV
+VOLTAGE_NOW        11258000    present voltage    11248 mV
+CURRENT_NOW        1469000     present rate       1465 mA
+CHARGE_FULL_DESIGN 7800000                                    design capacity         7800 mAh
+CHARGE_FULL        6677000                                    last full capacity      6677 mAh
+CHARGE_NOW         2889000     remaining capacity 2888 mAh
+MODEL_NAME         42T4799                                    model number            42T4799
+MANUFACTURER       SANYO                                      OEM info                SANYO
+SERIAL_NUMBER      13660                                      serial number           13660
+n.a.                           capacity state     ok
+n.a.                                                          battery technology      rechargeable
+n.a.                                                          design capacity warning 333 mAh
+n.a.                                                          design capacity low     18 mAh
+n.a.                                                          capacity granularity 1  1 mAh
+n.a.                                                          capacity granularity 2  1 mAh
+================== =========== ================== =========== ======================= =============
 
 
 Simple plot example
